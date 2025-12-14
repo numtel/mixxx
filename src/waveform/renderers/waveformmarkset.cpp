@@ -1,9 +1,9 @@
 #include "waveformmarkset.h"
 
-#include <QtDebug>
 #include <set>
 
 #include "util/defs.h"
+#include "track/cue.h"
 
 WaveformMarkSet::WaveformMarkSet() {
 }
@@ -15,8 +15,8 @@ WaveformMarkSet::~WaveformMarkSet() {
 void WaveformMarkSet::setup(const QString& group, const QDomNode& node,
                             const SkinContext& context,
                             const WaveformSignalColors& signalColors) {
-    // + 3 for cue_point, loop_start_position and loop_end_position
-    m_marks.reserve(kMaxNumberOfHotcues + 3);
+    // + 30 for cue_point, loop_start_position and loop_end_position and 27 memory cues
+    m_marks.reserve(kMaxNumberOfHotcues + 30);
     // Note: m_hotCueMarks does not support reserving space
 
     std::set<QString> controlItemSet;
@@ -65,11 +65,69 @@ void WaveformMarkSet::setup(const QString& group, const QDomNode& node,
     }
 }
 
+void WaveformMarkSet::syncMemoryCueMarks(const QString& group,
+        const QList<CuePointer>& cues,
+        int dimBrightThreshold,
+        const WaveformSignalColors& signalColors) {
+    // Drop previously created memory-cue marks from the render set.
+    for (const auto& p : std::as_const(m_memoryCueMarks)) {
+        m_marks.removeAll(p);
+    }
+    m_memoryCueMarks.clear();
+
+    // Pick a style template: prefer <DefaultMark>, otherwise any existing hotcue mark.
+    WaveformMarkPointer tmpl = m_pDefaultMark;
+    if (tmpl.isNull()) {
+        // Grab the first existing hotcue mark as a visual template.
+        for (int i = 0; i < kMaxNumberOfHotcues && tmpl.isNull(); ++i) {
+            tmpl = m_hotCueMarks.value(i);
+        }
+    }
+    if (tmpl.isNull()) {
+        // Nothing to style with; bail out safely.
+        return;
+    }
+
+    // Create one fixed-position mark per Memory cue.
+    for (const CuePointer& pCue : cues) {
+        if (!pCue || pCue->getType() != mixxx::CueType::Memory) {
+            continue;
+        }
+        const double pos = pCue->getPosition().toEngineSamplePos();
+        if (pos == Cue::kNoPosition) {
+            continue;
+        }
+
+        // Construct a mark using the template’s look but no position/visibility COs.
+        // NOTE: WaveformMarkPointer::create(...) overload used in setDefault() lets us
+        // create a mark without binding to a control object; we'll set the position directly.
+        auto pMark = WaveformMarkPointer::create(
+                group,
+                /*positionControl*/ QString("memory_cue"),
+                /*visibilityControl*/ QString(),
+                QString("#ffffff"),
+                QString("AlignBottom"),
+                pCue->getLabel().isEmpty() ? QString("Memory Cue") : pCue->getLabel(),
+                tmpl->m_pixmapPath,
+                /*IconPath*/ QString(),
+                QColor("#0000ff"),
+                /*priority*/ tmpl->getPriority(),
+                /*hotCue*/ Cue::kNoHotCue,
+                signalColors);
+
+        // Fixed position and colors from the cue.
+        pMark->setSamplePosition(pos);
+        pMark->setBaseColor(mixxx::RgbColor::toQColor(pCue->getColor()), dimBrightThreshold);
+
+        m_marks.push_front(pMark);
+        m_memoryCueMarks.push_back(pMark);
+    }
+}
+
 void WaveformMarkSet::setDefault(const QString& group,
         const DefaultMarkerStyle& model,
         const WaveformSignalColors& signalColors) {
     m_pDefaultMark = WaveformMarkPointer::create(
-
             group,
             model.positionControl,
             model.visibilityControl,
@@ -85,7 +143,6 @@ void WaveformMarkSet::setDefault(const QString& group,
     for (int i = 0; i < kMaxNumberOfHotcues; ++i) {
         if (m_hotCueMarks.value(i).isNull()) {
             auto pMark = WaveformMarkPointer::create(
-
                     group,
                     model.positionControl,
                     model.visibilityControl,
@@ -97,7 +154,11 @@ void WaveformMarkSet::setDefault(const QString& group,
                     model.color,
                     i,
                     i,
-                    signalColors);
+                    signalColors,
+                    model.endPixmapPath,
+                    model.endIconPath,
+                    model.enabledOpacity,
+                    model.disabledOpacity);
             m_marks.push_front(pMark);
             m_hotCueMarks.insert(pMark->getHotCue(), pMark);
         }

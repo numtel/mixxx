@@ -20,6 +20,8 @@ bool WaveformRenderMarkBase::init() {
     m_marks.connectSamplePositionChanged(this, &WaveformRenderMarkBase::onMarkChanged);
     m_marks.connectSampleEndPositionChanged(this, &WaveformRenderMarkBase::onMarkChanged);
     m_marks.connectVisibleChanged(this, &WaveformRenderMarkBase::onMarkChanged);
+    m_marks.connectTypeChanged(this, &WaveformRenderMarkBase::onMarkChanged);
+    m_marks.connectStatusChanged(this, &WaveformRenderMarkBase::onMarkChanged);
     return true;
 }
 
@@ -60,6 +62,14 @@ void WaveformRenderMarkBase::updateMarksFromCues() {
         return;
     }
 
+    // First build fixed-position marks for Memory cues
+    // (these are not hotcues and have no CO to bind to).
+    m_marks.syncMemoryCueMarks(
+            m_waveformRenderer->getGroup(),
+            pTrackInfo->getCuePoints(),
+            m_waveformRenderer->getDimBrightThreshold(),
+            *m_waveformRenderer->getWaveformSignalColors());
+
     const int dimBrightThreshold = m_waveformRenderer->getDimBrightThreshold();
     const QList<CuePointer> loadedCues = pTrackInfo->getCuePoints();
     for (const CuePointer& pCue : loadedCues) {
@@ -79,6 +89,9 @@ void WaveformRenderMarkBase::updateMarksFromCues() {
         QColor newColor = mixxx::RgbColor::toQColor(pCue->getColor());
         pMark->setText(newLabel);
         pMark->setBaseColor(newColor, dimBrightThreshold);
+        if (pMark->isJump()) {
+            pMark->setNeedsImageUpdate();
+        }
     }
 
     updateMarks();
@@ -95,6 +108,9 @@ void WaveformRenderMarkBase::updateMarkImages() {
     for (const auto& pMark : m_marks) {
         if (pMark->needsImageUpdate()) {
             updateMarkImage(pMark);
+        }
+        if (pMark->needsEndImageUpdate()) {
+            updateEndMarkImage(pMark);
         }
     }
 }

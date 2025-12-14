@@ -39,6 +39,7 @@ class VinylControlControl;
 class LoopingControl;
 class ClockControl;
 class CueControl;
+class Seek30Control;
 class ReadAheadManager;
 class ControlObject;
 class ControlProxy;
@@ -90,6 +91,7 @@ class EngineBuffer : public EngineObject {
         RubberBandFiner = 2,
 #endif
     };
+    Q_ENUM(KeylockEngine);
 
     // intended for iteration over the KeylockEngine enum
     constexpr static std::initializer_list<KeylockEngine> kKeylockEngines = {
@@ -114,6 +116,9 @@ class EngineBuffer : public EngineObject {
     double getSpeed() const;
     mixxx::audio::ChannelCount getChannelCount() const {
         return m_channelCount;
+    }
+    mixxx::audio::FramePos getPlayPos() const {
+        return m_playPos;
     }
     bool getScratching() const;
     bool isReverse() const;
@@ -221,6 +226,10 @@ class EngineBuffer : public EngineObject {
             mixxx::StemChannelSelection stemMask,
             bool play,
             EngineChannel* pChannelToCloneFrom);
+
+    mixxx::StemChannelSelection getStemMask() const {
+        return m_stemMask;
+    }
 #else
     void loadTrack(TrackPointer pTrack,
             bool play,
@@ -251,6 +260,7 @@ class EngineBuffer : public EngineObject {
   signals:
     void trackLoaded(TrackPointer pNewTrack, TrackPointer pOldTrack);
     void trackLoadFailed(TrackPointer pTrack, const QString& reason);
+    void noVinylControlInputConfigured();
 
   private slots:
     void slotTrackLoading();
@@ -338,6 +348,7 @@ class EngineBuffer : public EngineObject {
     FRIEND_TEST(CueControlTest, SeekOnSetCueCDJ);
     FRIEND_TEST(CueControlTest, SeekOnSetCuePlay);
     CueControl* m_pCueControl;
+    Seek30Control* m_pSeek30Control;
 
     QList<EngineControl*> m_engineControls;
 
@@ -498,6 +509,10 @@ class EngineBuffer : public EngineObject {
     std::size_t m_lastBufferSize;
 
     QSharedPointer<VisualPlayPosition> m_visualPlayPos;
+
+#ifdef __STEM__
+    mixxx::StemChannelSelection m_stemMask;
+#endif
 };
 
 Q_DECLARE_METATYPE(EngineBuffer::KeylockEngine)

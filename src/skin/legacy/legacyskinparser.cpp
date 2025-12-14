@@ -36,6 +36,7 @@
 #include "widget/wbasewidget.h"
 #include "widget/wbattery.h"
 #include "widget/wbeatspinbox.h"
+#include "widget/wbpmeditor.h"
 #include "widget/wcombobox.h"
 #include "widget/wcoverart.h"
 #include "widget/wcuebutton.h"
@@ -52,6 +53,7 @@
 #include "widget/weffectpushbutton.h"
 #include "widget/weffectselector.h"
 #include "widget/whotcuebutton.h"
+#include "widget/wmemorycuebutton.h"
 #include "widget/wkey.h"
 #include "widget/wknob.h"
 #include "widget/wknobcomposed.h"
@@ -546,6 +548,8 @@ QList<QWidget*> LegacySkinParser::parseNode(const QDomElement& node) {
         result = wrapWidget(parseEffectPushButton(node));
     } else if (nodeName == "HotcueButton") {
         result = wrapWidget(parseHotcueButton(node));
+    } else if (nodeName == "MemoryCueButton") {
+        result = wrapWidget(parseMemoryCueButton(node));
     } else if (nodeName == "ComboBox") {
         result = wrapWidget(parseStandardWidget<WComboBox>(node));
     } else if (nodeName == "Overview") {
@@ -575,17 +579,17 @@ QList<QWidget*> LegacySkinParser::parseNode(const QDomElement& node) {
     } else if (nodeName == "Number" || nodeName == "NumberBpm") {
         // NumberBpm is deprecated, and is now the same as a Number
         result = wrapWidget(parseLabelWidget<WNumber>(node));
+    } else if (nodeName == "BpmEditor") {
+        result = wrapWidget(parseBpmEditor(node));
     } else if (nodeName == "NumberDb") {
         result = wrapWidget(parseLabelWidget<WNumberDb>(node));
     } else if (nodeName == "Label") {
         result = wrapWidget(parseLabelWidget<WLabel>(node));
-    }
+    } else if (nodeName == "StemLabel") {
 #ifdef __STEM__
-    else if (nodeName == "StemLabel") {
         result = wrapWidget(parseStemLabelWidget(node));
-    }
 #endif
-    else if (nodeName == "Knob") {
+    } else if (nodeName == "Knob") {
         result = wrapWidget(parseStandardWidget<WKnob>(node));
     } else if (nodeName == "KnobComposed") {
         result = wrapWidget(parseStandardWidget<WKnobComposed>(node));
@@ -1033,6 +1037,24 @@ QWidget* LegacySkinParser::parseStemLabelWidget(const QDomElement& element) {
 }
 #endif
 
+QWidget* LegacySkinParser::parseBpmEditor(const QDomElement& node) {
+    const QString group = lookupNodeGroup(node);
+    BaseTrackPlayer* pPlayer = m_pPlayerManager->getPlayer(group);
+    if (!pPlayer) {
+        SKIN_WARNING(node, *m_pContext, QStringLiteral("No player found for group: %1").arg(group));
+        return nullptr;
+    }
+    WBpmEditor* pBpmEditor = new WBpmEditor(group, m_pParent);
+    pBpmEditor->setup(node, *m_pContext);
+    commonWidgetSetup(node, pBpmEditor);
+    // Set tooltips of child widgets for mode selection & editing
+    const QString tapTooltip = m_tooltips.tooltipForId("tempo_tap_bpm_tap");
+    const QString editTooltip = m_tooltips.tooltipForId("tempo_edit");
+    pBpmEditor->setTapButtonTooltip(tapTooltip);
+    pBpmEditor->setEditButtonTooltip(editTooltip);
+    return pBpmEditor;
+}
+
 QWidget* LegacySkinParser::parseOverview(const QDomElement& node) {
 #ifdef MIXXX_USE_QML
     if (CmdlineArgs::Instance().isQml()) {
@@ -1322,6 +1344,7 @@ QWidget* LegacySkinParser::parseNumberRate(const QDomElement& node) {
     WNumberRate* p = new WNumberRate(group, m_pParent);
     setupLabelWidget(node, p);
 
+    // TODO check this and other BgColor/palette hacks
     // TODO(rryan): Let's look at removing this palette change in 1.12.0. I
     // don't think it's needed anymore.
     p->setPalette(palette);
@@ -1338,7 +1361,7 @@ QWidget* LegacySkinParser::parseNumberPos(const QDomElement& node) {
 
 QWidget* LegacySkinParser::parseEngineKey(const QDomElement& node) {
     QString group = lookupNodeGroup(node);
-    WKey* pEngineKey = new WKey(group, m_pParent);
+    WKey* pEngineKey = new WKey(group, m_pConfig, m_pParent);
     setupLabelWidget(node, pEngineKey);
     return pEngineKey;
 }
@@ -1963,6 +1986,17 @@ QWidget* LegacySkinParser::parseHotcueButton(const QDomElement& element) {
             Qt::RightButton,
             controlFromConfigKey(pWidget->getClearConfigKey(), false),
             ControlParameterWidgetConnection::EmitOption::EMIT_ON_PRESS_AND_RELEASE);
+
+    pWidget->Init();
+    return pWidget;
+}
+
+QWidget* LegacySkinParser::parseMemoryCueButton(const QDomElement& element) {
+    QString group = lookupNodeGroup(element);
+    WMemoryCueButton* pWidget = new WMemoryCueButton(m_pParent, group);
+    commonWidgetSetup(element, pWidget);
+    pWidget->setup(element, *m_pContext);
+    pWidget->installEventFilter(m_pKeyboard);
 
     pWidget->Init();
     return pWidget;
